@@ -28,8 +28,12 @@ mbo_id <- concat_encounters(id_pts$millennium.id)
 #   * Visit Data
 
 demog <- read_data(dir_raw, "demographics", FALSE) %>%
-    as.demographics(extras = list("age.days" = "`Age- Days (At Admit)`")) %>%
+    as.demographics(extras = list("age.days" = "Age- Days (At Admit)")) %>%
     mutate_at("age.days", as.numeric)
+
+# demog %>%
+#     left_join(id_pts, by = "millennium.id") %>%
+#     write.csv("data/external/demographics.csv", row.names = FALSE)
 
 locations <- read_data(dir_raw, "locations", FALSE) %>%
     as.locations() %>%
