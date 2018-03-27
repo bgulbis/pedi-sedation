@@ -2,13 +2,11 @@
 title: "Exploratory Data Analysis"
 author: "Brian Gulbis"
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
-output: 
-    html_document:
-        code_folding: hide
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
 ```
 
 ```{r, message=FALSE}
@@ -249,6 +247,36 @@ meds_capd_sum %>%
 
 ```
 
+```{r eval=FALSE}
+data_meds <- meds_capd_pos_sum %>%
+    bind_rows(meds_capd_neg_sum) %>%
+    left_join(
+        data_patients[c("millennium.id", "group")], 
+        by = "millennium.id"
+    ) %>%
+    group_by(group, med) %>%
+    summarize_at(
+        c("time.wt.avg", "max.rate", "run.time"),
+        funs(mean, sd, median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)),
+        na.rm = TRUE
+    ) %>%
+    ungroup() %>%
+    gather(key, value, -group, -med) %>%
+    spread(group, value)
+
+
+# meds_drips <- meds %>%
+#     filter(!is.na(event.tag)) %>%
+#     calc_runtime() %>%
+#     summarize_data()
+
+meds_int <- meds %>%
+    filter(is.na(event.tag)) %>%
+    calc_runtime(cont = FALSE) %>%
+    summarize_data(cont = FALSE)
+
+```
+
 ## Comfort B Scores
 
 ```{r}
@@ -295,25 +323,5 @@ comf_b_values %>%
     ) %>%
     knitr::kable(digits = 1, caption = "Distribution of Comfort B scores")
 
-```
-
-```{r}
-write.csv(
-    meds_capd, 
-    "../data/external/meds-continuous_all-rates.csv", 
-    row.names = FALSE
-)
-
-write.csv(
-    meds_capd_sum, 
-    "../data/external/meds-continuous_summarized.csv", 
-    row.names = FALSE
-)
-
-write.csv(
-    comf_b_values,
-    "../data/external/comfort-b_values.csv",
-    row.names = FALSE
-)
 ```
 
