@@ -42,3 +42,11 @@ meds_clon <- raw_meds %>%
 pts_include <- meds_dexm %>%
     semi_join(meds_clon, by = "millennium.id") %>%
     distinct(millennium.id)
+
+mbo_pts <- concat_encounters(pts_include$millennium.id) 
+
+# run MBO queries
+#   * Demographics - Pedi
+#   * Identifiers - by Millennium Encounter id
+#   * Location History
+#   * Vent Times
