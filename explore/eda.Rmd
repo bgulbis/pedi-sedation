@@ -90,16 +90,18 @@ vent <- read_data(dir_raw, "vent-times", FALSE) %>%
     as.vent_times() %>%
     tidy_data(dc = visits)
 
-meds_keep <- bind_rows(med_lookup("benzodiazepines"),
-                       med_lookup("narcotic analgesics"),
-                       med_class_lookup("propofol"),
-                       med_class_lookup("dexmedetomidine"),
-                       med_lookup("loop diuretics"),
-                       med_lookup("neuromuscular blocking agents"),
-                       med_class_lookup("melatonin"),
-                       med_lookup("anticholinergic antiemetics"),
-                       med_lookup("glucocorticoids"),
-                       med_lookup("antipsychotics")) %>%
+meds_keep <- bind_rows(
+    med_lookup("benzodiazepines"),
+    med_lookup("narcotic analgesics"),
+    med_class_lookup("propofol"),
+    med_class_lookup("dexmedetomidine"),
+    med_lookup("loop diuretics"),
+    med_lookup("neuromuscular blocking agents"),
+    med_class_lookup("melatonin"),
+    med_lookup("anticholinergic antiemetics"),
+    med_lookup("glucocorticoids"),
+    med_lookup("antipsychotics")
+) %>%
     distinct(med.name) %>%
     mutate_at("med.name", str_to_lower)
 ```
@@ -178,6 +180,47 @@ meds_capd <- meds %>%
 
 ```
 
+## ICU Data
+
+```{r, fig.cap="Distribution of PICU lenght of stay between groups. Outliers above 50 days are not shown."}
+picu <- locations %>%
+    filter(location == "HC PICU") %>%
+    left_join(data_screen, by = "millennium.id") %>%
+    distinct(millennium.id, unit.count, .keep_all = TRUE) %>%
+    mutate_at("unit.length.stay", as.numeric) 
+
+picu %>%
+    ggplot(aes(x = group, y = unit.length.stay)) +
+    geom_boxplot() +
+    xlab(NULL) +
+    ylab("Length of stay (days)") +
+    coord_cartesian(ylim = c(0, 50)) +
+    theme_bg()
+```
+
+```{r}
+picu %>%
+    group_by(group) %>%
+    summarize_at(
+        "unit.length.stay",
+        funs(
+            mean, 
+            sd, 
+            median, 
+            q25 = quantile(., 0.25), 
+            q75 = quantile(., 0.75),
+            max,
+            sum
+        ),
+        na.rm = TRUE
+    ) %>%
+    knitr::kable(
+        digits = 1, 
+        caption = "Distribution of PICU lenght of stay between"
+    )
+```
+
+
 ## Continuous Infusions
 
 ```{r, fig.cap="Distribution of infusion rates by medication. This includes all non-zero rates for all patients in the Negative group and non-zero rates for 5 days prior to Positive CAPD score."}
@@ -209,7 +252,10 @@ meds_capd %>%
         ),
         na.rm = TRUE
     ) %>%
-    knitr::kable(digits = 1, caption = "Distribution of infusion rates by medication")
+    knitr::kable(
+        digits = 1, 
+        caption = "Distribution of infusion rates by medication"
+    )
 
 ```
 
@@ -245,7 +291,10 @@ meds_capd_sum %>%
         ),
         na.rm = TRUE
     ) %>%
-    knitr::kable(digits = 1, caption = "Distribution of time-weighted average infusion rates by medication")
+    knitr::kable(
+        digits = 1, 
+        caption = "Distribution of time-weighted average infusion rates by medication"
+    )
 
 ```
 
