@@ -46,7 +46,13 @@ pts_include <- meds_dexm %>%
 
 mbo_id <- concat_encounters(pts_include$millennium.id) 
 
+dc <- raw_pts %>%
+    semi_join(pts_include, by = "millennium.id") %>%
+    filter(!is.na(discharge.datetime)) %>%
+    select(millennium.id, discharge.datetime) 
+
 # run MBO queries
+#   * Clinical Events - Measures
 #   * Demographics - Pedi
 #   * Identifiers - by Millennium Encounter id
 #   * Location History
@@ -56,16 +62,67 @@ mbo_id <- concat_encounters(pts_include$millennium.id)
 demog <- read_data(dir_raw, "demog", FALSE) %>%
     as.demographics(
         extras = list("age.days" = "Age- Days (At Admit)")
-    )
+    ) %>%
+    semi_join(dc, by = "millennium.id")
     
 id <- read_data(dir_raw, "ident", FALSE) %>%
-    as.id()
+    as.id() %>%
+    semi_join(dc, by = "millennium.id")
 
 locations <- read_data(dir_raw, "locations", FALSE) %>%
     as.locations() %>%
-    tidy_data()
+    tidy_data() %>%
+    filter(location == picu) %>%
+    semi_join(dc, by = "millennium.id")
 
 meds <- read_data(dir_raw, "meds-all-inpt", FALSE) %>%
-    as.meds_inpt()
+    as.meds_inpt() %>%
+    semi_join(dc, by = "millennium.id")
+
+vent <- read_data(dir_raw, "vent-times", FALSE) %>%
+    as.vent_times() %>%
+    tidy_data(dc) %>%
+    filter(vent.duration > 0) %>%
+    semi_join(dc, by = "millennium.id")
+
+# dexmedetomidine --------------------------------------
+
+dexmed <- meds_dexm %>%
+    semi_join(dc, by = "millennium.id") %>%
+    calc_runtime() %>%
+    summarize_data()
+
+clon <- meds_clon %>%
+    semi_join(dc, by = "millennium.id") %>%
+    mutate_at(
+        "med.dose",
+        funs(
+            if_else(
+                med.dose.units == "mg", 
+                . * 1000,
+                .
+            )
+        )
+    ) 
+
+clon_summary <- clon %>%
+    calc_runtime(cont = FALSE) %>%
+    summarize_data(cont = FALSE)
+    
+clon_first <- clon %>%
+    arrange(millennium.id, med.datetime) %>%
+    distinct(millennium.id, .keep_all = TRUE) %>%
+    select(
+        millennium.id,
+        clon.start = med.datetime,
+        clon.dose = med.dose,
+        clon.route = route
+    )
+
+dexmed_clon <- dexmed %>%
+    left_join(clon_first, by = "millennium.id") %>%
+    mutate(
+        clon.wean = clon.start <= stop.datetime + hours(24)
+    )
 
 # get order.id for lorazepam, methadone - only want scheduled meds
