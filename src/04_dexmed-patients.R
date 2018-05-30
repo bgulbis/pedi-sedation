@@ -18,10 +18,11 @@ dirr::gzip_files(dir_raw)
 raw_pts <- read_data(dir_raw, "patients", FALSE) %>%
     as.patients()
 
-mbo_id <- concat_encounters(raw_pts$millennium.id, 1000)
+mbo_pts <- concat_encounters(raw_pts$millennium.id, 500)
 
 # run MBO queries
-#   * Medications - Inpatient - All
+#   * Medications - Inpatient - Prompt
+#       - Medication (Generic): dexmedetomidine;clonidine
 
 raw_meds <- read_data(dir_raw, "meds-inpt", FALSE) %>%
     as.meds_inpt()
@@ -43,10 +44,28 @@ pts_include <- meds_dexm %>%
     semi_join(meds_clon, by = "millennium.id") %>%
     distinct(millennium.id)
 
-mbo_pts <- concat_encounters(pts_include$millennium.id) 
+mbo_id <- concat_encounters(pts_include$millennium.id) 
 
 # run MBO queries
 #   * Demographics - Pedi
 #   * Identifiers - by Millennium Encounter id
 #   * Location History
+#   * Medications - Inpatient - All
 #   * Vent Times
+
+demog <- read_data(dir_raw, "demog", FALSE) %>%
+    as.demographics(
+        extras = list("age.days" = "Age- Days (At Admit)")
+    )
+    
+id <- read_data(dir_raw, "ident", FALSE) %>%
+    as.id()
+
+locations <- read_data(dir_raw, "locations", FALSE) %>%
+    as.locations() %>%
+    tidy_data()
+
+meds <- read_data(dir_raw, "meds-all-inpt", FALSE) %>%
+    as.meds_inpt()
+
+# get order.id for lorazepam, methadone - only want scheduled meds
