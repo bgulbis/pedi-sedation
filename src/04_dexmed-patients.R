@@ -120,6 +120,7 @@ clon <- meds_clon %>%
     ) 
 
 clon_summary <- clon %>%
+    filter(!route %in% c("TOP", "IV", "EPIDURAL")) %>%
     calc_runtime(cont = FALSE) %>%
     summarize_data(cont = FALSE)
     
