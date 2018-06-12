@@ -1,6 +1,7 @@
 library(tidyverse)
 library(lubridate)
 library(edwr)
+library(openxlsx)
 
 dir_raw <- "data/raw/dexmed"
 tz <- "US/Central"
@@ -69,7 +70,7 @@ id <- read_data(dir_raw, "ident", FALSE) %>%
     as.id() %>%
     semi_join(dc, by = "millennium.id")
 
-locations <- read_data(dir_raw, "locations", FALSE) %>%
+data_locations <- read_data(dir_raw, "locations", FALSE) %>%
     as.locations() %>%
     tidy_data() %>%
     filter(location == picu) %>%
@@ -93,12 +94,12 @@ weights <- read_data(dir_raw, "events-measures", FALSE) %>%
 
 # dexmedetomidine --------------------------------------
 
-dexmed <- meds_dexm %>%
+data_dexmed <- meds_dexm %>%
     semi_join(dc, by = "millennium.id") %>%
     calc_runtime() %>%
     summarize_data()
 
-dexmed_daily <- meds_dexm %>%
+data_dexmed_daily <- meds_dexm %>%
     semi_join(dc, by = "millennium.id") %>%
     arrange(millennium.id, med.datetime) %>%
     mutate(med.day = floor_date(med.datetime, unit = "days")) %>%
@@ -108,6 +109,7 @@ dexmed_daily <- meds_dexm %>%
 
 clon <- meds_clon %>%
     semi_join(dc, by = "millennium.id") %>%
+    filter(!route %in% c("TOP", "IV", "EPIDURAL")) %>%
     mutate_at(
         "med.dose",
         funs(
@@ -120,7 +122,6 @@ clon <- meds_clon %>%
     ) 
 
 clon_summary <- clon %>%
-    filter(!route %in% c("TOP", "IV", "EPIDURAL")) %>%
     calc_runtime(cont = FALSE) %>%
     summarize_data(cont = FALSE)
     
@@ -134,7 +135,7 @@ clon_first <- clon %>%
         clon.route = route
     )
 
-dexmed_clon <- dexmed %>%
+dexmed_clon <- data_dexmed %>%
     left_join(clon_first, by = "millennium.id") %>%
     mutate(
         clon.wean = clon.start <= stop.datetime + hours(24)
@@ -187,3 +188,24 @@ data_meds_other <- meds_alt %>%
         med.dose.units,
         time.dexmed
     )
+
+# data sets --------------------------------------------
+
+tmp_weight <- weights %>%
+    left_join(
+        data_dexmed[c("millennium.id", "start.datetime")],
+        by = "millennium.id"
+    ) %>%
+    arrange(millennium.id, event.datetime) %>%
+    group_by(millennium.id) %>%
+    summarize(
+        weight.first = first(event.result),
+        weight.last = last(event.result)
+    )
+
+data_demographics <- id %>%
+    left_join(demog, by = "millennium.id") %>%
+    left_join(tmp_weight, by = "millennium.id") %>%
+    select(-race, -(disposition:visit.type))
+
+
