@@ -94,7 +94,19 @@ tmp_dexmed <- meds_dexm %>%
     calc_runtime() %>%
     summarize_data() 
 
-data_clonidine <- meds_clon %>%
+tmp_weight <- weights %>%
+    left_join(
+        tmp_dexmed[c(id_col, "start.datetime")],
+        by = id_col
+    ) %>%
+    arrange(millennium.id, event.datetime) %>%
+    group_by(millennium.id) %>%
+    summarize(
+        weight.first = first(event.result),
+        weight.last = last(event.result)
+    )
+
+tmp_clonidine <- meds_clon %>%
     semi_join(dc, by = id_col) %>%
     left_join(
         tmp_dexmed[c(id_col, "start.datetime")],
@@ -113,18 +125,49 @@ data_clonidine <- meds_clon %>%
                 .
             )
         )
-    ) %>%
+    ) 
+
+data_clonidine <- tmp_clonidine %>%
     calc_runtime(cont = FALSE) %>%
     summarize_data(cont = FALSE)
 
-data_dexmed <- tmp_dexmed %>%
-    inner_join(
-        data_clonidine[c(id_col, "first.datetime")],
+# data_clonidine_daily <- tmp_clonidine %>%
+#     mutate(med.day = floor_date(med.datetime, unit = "days")) %>%
+#     calc_runtime(med.day, cont = FALSE) %>%
+#     summarize_data(med.day, cont = FALSE)
+
+data_clonidine_wt <- tmp_clonidine %>%
+    left_join(tmp_weight, by = id_col) %>%
+    mutate(med.day = floor_date(med.datetime, unit = "days")) %>%
+    mutate_at("med.dose", funs(. / weight.first)) %>%
+    calc_runtime(med.day, cont = FALSE) %>%
+    summarize_data(med.day, cont = FALSE) %>%
+    group_by(millennium.id) %>%
+    summarize(
+        first.dose = first(cum.dose),
+        max.dose = max(cum.dose)
+    ) %>%
+    left_join(
+        data_clonidine[c(id_col, "first.datetime", "last.datetime")],
         by = id_col
     ) %>%
-    mutate(
-        clon.wean = first.datetime <= stop.datetime + hours(24)
-    )
+    left_join(
+        tmp_dexmed[c(id_col, "stop.datetime")],
+        by = id_col
+    ) %>%
+    mutate(clon.24h = first.datetime <= stop.datetime + hours(24)) %>%
+    group_by(
+        millennium.id,
+        first.dose, 
+        max.dose, 
+        first.datetime, 
+        last.datetime
+    ) %>%
+    summarize_at("clon.24h", sum, na.rm = TRUE) %>%
+    mutate_at("clon.24h", funs(. == 1))
+
+data_dexmed <- tmp_dexmed %>%
+    semi_join(data_clonidine, by = id_col) 
 
 data_dexmed_daily <- meds_dexm %>%
     semi_join(data_clonidine, by = id_col) %>%
@@ -184,18 +227,6 @@ data_meds_other <- meds_alt %>%
     ) 
 
 # data sets --------------------------------------------
-
-tmp_weight <- weights %>%
-    left_join(
-        data_dexmed[c(id_col, "start.datetime")],
-        by = id_col
-    ) %>%
-    arrange(millennium.id, event.datetime) %>%
-    group_by(millennium.id) %>%
-    summarize(
-        weight.first = first(event.result),
-        weight.last = last(event.result)
-    )
 
 data_demographics <- id %>%
     semi_join(data_clonidine, by = id_col) %>%
