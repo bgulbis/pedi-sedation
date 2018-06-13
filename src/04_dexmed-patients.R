@@ -6,6 +6,7 @@ library(openxlsx)
 dir_raw <- "data/raw/dexmed"
 tz <- "US/Central"
 picu <- "HC PICU"
+id_col <- "millennium.id"
 
 dirr::gzip_files(dir_raw)
 
@@ -42,13 +43,13 @@ meds_clon <- raw_meds %>%
     ) 
 
 pts_include <- meds_dexm %>%
-    semi_join(meds_clon, by = "millennium.id") %>%
+    semi_join(meds_clon, by = id_col) %>%
     distinct(millennium.id)
 
 mbo_id <- concat_encounters(pts_include$millennium.id) 
 
 dc <- raw_pts %>%
-    semi_join(pts_include, by = "millennium.id") %>%
+    semi_join(pts_include, by = id_col) %>%
     filter(!is.na(discharge.datetime)) %>%
     select(millennium.id, discharge.datetime) 
 
@@ -64,52 +65,45 @@ demog <- read_data(dir_raw, "demog", FALSE) %>%
     as.demographics(
         extras = list("age.days" = "Age- Days (At Admit)")
     ) %>%
-    semi_join(dc, by = "millennium.id")
+    semi_join(dc, by = id_col)
     
 id <- read_data(dir_raw, "ident", FALSE) %>%
     as.id() %>%
-    semi_join(dc, by = "millennium.id")
-
-data_locations <- read_data(dir_raw, "locations", FALSE) %>%
-    as.locations() %>%
-    tidy_data() %>%
-    filter(location == picu) %>%
-    semi_join(dc, by = "millennium.id")
+    semi_join(dc, by = id_col)
 
 meds <- read_data(dir_raw, "meds-all-inpt", FALSE) %>%
     as.meds_inpt() %>%
-    semi_join(dc, by = "millennium.id")
+    semi_join(dc, by = id_col)
 
 data_vent <- read_data(dir_raw, "vent-times", FALSE) %>%
     as.vent_times() %>%
     tidy_data(dc) %>%
     filter(vent.duration > 0) %>%
-    semi_join(dc, by = "millennium.id")
+    semi_join(dc, by = id_col)
 
 weights <- read_data(dir_raw, "events-measures", FALSE) %>%
     as.events(order_var = FALSE) %>%
     filter(event == "weight") %>%
     mutate_at("event.result", as.numeric) %>%
-    semi_join(dc, by = "millennium.id")
+    semi_join(dc, by = id_col)
 
-# dexmedetomidine --------------------------------------
+# sedatives --------------------------------------
 
-data_dexmed <- meds_dexm %>%
-    semi_join(dc, by = "millennium.id") %>%
+tmp_dexmed <- meds_dexm %>%
+    semi_join(dc, by = id_col) %>%
     calc_runtime() %>%
-    summarize_data()
+    summarize_data() 
 
-data_dexmed_daily <- meds_dexm %>%
-    semi_join(dc, by = "millennium.id") %>%
-    arrange(millennium.id, med.datetime) %>%
-    mutate(med.day = floor_date(med.datetime, unit = "days")) %>%
-    calc_runtime(med.day) %>%
-    summarize_data(med.day) %>%
-    filter(cum.dose > 0)
-
-clon <- meds_clon %>%
-    semi_join(dc, by = "millennium.id") %>%
-    filter(!route %in% c("TOP", "IV", "EPIDURAL")) %>%
+data_clonidine <- meds_clon %>%
+    semi_join(dc, by = id_col) %>%
+    left_join(
+        tmp_dexmed[c(id_col, "start.datetime")],
+        by = id_col
+    ) %>%
+    filter(
+        med.datetime >= start.datetime,
+        !route %in% c("TOP", "IV", "EPIDURAL")
+    ) %>%
     mutate_at(
         "med.dose",
         funs(
@@ -119,27 +113,26 @@ clon <- meds_clon %>%
                 .
             )
         )
-    ) 
-
-clon_summary <- clon %>%
+    ) %>%
     calc_runtime(cont = FALSE) %>%
     summarize_data(cont = FALSE)
-    
-clon_first <- clon %>%
-    arrange(millennium.id, med.datetime) %>%
-    distinct(millennium.id, .keep_all = TRUE) %>%
-    select(
-        millennium.id,
-        clon.start = med.datetime,
-        clon.dose = med.dose,
-        clon.route = route
+
+data_dexmed <- tmp_dexmed %>%
+    inner_join(
+        data_clonidine[c(id_col, "first.datetime")],
+        by = id_col
+    ) %>%
+    mutate(
+        clon.wean = first.datetime <= stop.datetime + hours(24)
     )
 
-dexmed_clon <- data_dexmed %>%
-    left_join(clon_first, by = "millennium.id") %>%
-    mutate(
-        clon.wean = clon.start <= stop.datetime + hours(24)
-    )
+data_dexmed_daily <- meds_dexm %>%
+    semi_join(data_clonidine, by = id_col) %>%
+    arrange(millennium.id, med.datetime) %>%
+    mutate(med.day = floor_date(med.datetime, unit = "days")) %>%
+    calc_runtime(med.day) %>%
+    summarize_data(med.day) %>%
+    filter(cum.dose > 0)
 
 # get order.id for lorazepam, methadone - only want scheduled meds
 
@@ -161,14 +154,15 @@ orders <- read_data(dir_raw, "orders-details", FALSE) %>%
     as.order_detail(extras = list("order.product" = "Mnemonic (Product)"))
 
 data_meds_other <- meds_alt %>%
+    semi_join(data_clonidine, by = id_col) %>%
     left_join(
-        orders[c("millennium.id", "order.id", "prn")], 
-        by = c("millennium.id", "orig.order.id" = "order.id")
+        orders[c(id_col, "order.id", "prn")], 
+        by = c(id_col, "orig.order.id" = "order.id")
     ) %>%
     filter(prn == "Scheduled") %>%
     left_join(
-        dexmed[c("millennium.id", "start.datetime")],
-        by = "millennium.id"
+        data_dexmed[c(id_col, "start.datetime")],
+        by = id_col
     ) %>%
     filter(med.datetime > start.datetime) %>%
     arrange(millennium.id, med.datetime) %>%
@@ -187,14 +181,14 @@ data_meds_other <- meds_alt %>%
         med.dose,
         med.dose.units,
         time.dexmed
-    )
+    ) 
 
 # data sets --------------------------------------------
 
 tmp_weight <- weights %>%
     left_join(
-        data_dexmed[c("millennium.id", "start.datetime")],
-        by = "millennium.id"
+        data_dexmed[c(id_col, "start.datetime")],
+        by = id_col
     ) %>%
     arrange(millennium.id, event.datetime) %>%
     group_by(millennium.id) %>%
@@ -204,8 +198,23 @@ tmp_weight <- weights %>%
     )
 
 data_demographics <- id %>%
-    left_join(demog, by = "millennium.id") %>%
-    left_join(tmp_weight, by = "millennium.id") %>%
+    semi_join(data_clonidine, by = id_col) %>%
+    left_join(demog, by = id_col) %>%
+    left_join(tmp_weight, by = id_col) %>%
     select(-race, -(disposition:visit.type))
 
+data_locations <- read_data(dir_raw, "locations", FALSE) %>%
+    as.locations() %>%
+    tidy_data() %>%
+    filter(location == picu) %>%
+    semi_join(data_clonidine, by = id_col)
 
+dirr::save_rds("data/tidy/dexmed", "data_")
+
+ls(.GlobalEnv, pattern = "data_") %>%
+    walk(
+        ~write.xlsx(
+            get(.x), 
+            paste0("data/external/dexmed/", .x, ".xlsx")
+        )
+    )
