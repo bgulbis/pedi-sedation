@@ -1,12 +1,38 @@
 library(tidyverse)
 library(lubridate)
-library(edwr)
+# library(edwr)
 library(openxlsx)
 
-dir_raw <- "data/raw/dexmed"
-tz <- "US/Central"
-picu <- "HC PICU"
-id_col <- "millennium.id"
+dir_data <- "data/tidy/dexmed-only"
+tz_locale <- locale(tz = "US/Central")
+
+get_data <- function(path, pattern, col_types = NULL) {
+    f <- list.files(path, pattern, full.names = TRUE)
+    
+    n <- f %>% 
+        purrr::map_int(~ nrow(data.table::fread(.x, select = 1L))) 
+    
+    f[n > 0] %>%
+        purrr::map_df(
+            readr::read_csv,
+            locale = tz_locale,
+            col_types = col_types
+        ) %>%
+        rename_all(stringr::str_to_lower)
+}
+
+df_demog <- get_data(dir_data, "demographics") %>%
+    select(-race)
+
+df_dexmed <- get_data(dir_data, "events")
+
+df_meds <- get_data(dir_data, "meds")
+
+df_weights <- get_data(dir_data, "weights")
+
+df_locations <- get_data(dir_data, "locations")
+
+df_vent <- get_data(dir_data, "vent")
 
 # run MBO query
 #   * Patients - by Medication (Generic) - Location
