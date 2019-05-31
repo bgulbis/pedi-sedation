@@ -76,7 +76,7 @@ calc_runtime <- function(x, ..., drip_off = 12, undocumented = 24, units = "hour
                 units = units
             ),
             !!"rate_chg" := is.na(dplyr::lag(!!rate_calc)) |
-                rate != dplyr::lag(!!rate_calc),
+                rate_calc != dplyr::lag(!!rate_calc),
             !!"chg_n" := cumsum(!!rate_chg)
         ) %>%
         
@@ -112,7 +112,7 @@ calc_runtime <- function(x, ..., drip_off = 12, undocumented = 24, units = "hour
         # calculate run time
         group_by(!!id, !!!group_var, !!med, !!drip_n) %>%
         mutate(
-            !!"run.time" := difftime(
+            !!"run_time" := difftime(
                 !!rate_start,
                 dplyr::first(!!rate_start),
                 units = units
@@ -137,7 +137,7 @@ calc_runtime <- function(x, ..., drip_off = 12, undocumented = 24, units = "hour
         
         # calculate the run time for the last drip row
         mutate(
-            !!"run.time" := !!duration + !!sym("run.time"),
+            !!"run_time" := !!duration + !!sym("run_time"),
             !!"rate_start" := !!rate_stop,
             !!"duration" := 0
         ) %>%
@@ -145,19 +145,78 @@ calc_runtime <- function(x, ..., drip_off = 12, undocumented = 24, units = "hour
     
     # bind the rows with drip end data and arrange by date/time; need to ungroup
     # first for bind_rows to keep edwr class assigment
-    df <- cont %>%
+    cont %>%
         ungroup() %>%
         dplyr::bind_rows(drip.end) %>%
         arrange(!!id, !!!group_var, !!med, !!drip_n, !!rate_start) %>%
         distinct()
-    
-    # reclass(x, df)
 }
+
+summarize_data <- function(x, ..., units = "hours") {
+    # turn off scientific notation
+    options(scipen = 999)
+    
+    id <- sym("encounter_id")
+    group_var <- quos(...)
+    
+    grp_by <- quos(!!id, !!!group_var, !!sym("medication"), !!sym("drip_n"))
+    rate <- sym("rate")
+    run_time <- sym("run_time")
+    rate_start <- sym("rate_start")
+    
+    # cont <- x %>%
+    #     group_by(!!!grp_by) %>%
+    #     filter(!!run_time > 0)
+    
+    # get last and min non-zero rate
+    nz_rate <- x %>%
+        group_by(!!!grp_by) %>%
+        filter(!!rate > 0) %>%
+        summarize(
+            !!"last_rate" := dplyr::last(!!rate),
+            !!"min_rate" := min(!!rate, na.rm = TRUE),
+            !!"run_time" := sum(!!sym("duration"), na.rm = TRUE)
+        )
+    
+    # get first and max rates and AUC
+    x %>%
+        group_by(!!!grp_by) %>%
+        summarize(
+            !!"start_datetime" := dplyr::first(!!rate_start),
+            !!"stop_datetime" := dplyr::if_else(
+                dplyr::last(!!rate) == 0,
+                dplyr::last(!!rate_start),
+                dplyr::last(!!sym("rate_stop"))
+            ),
+            !!"cum_dose" := sum(!!rlang::parse_expr("rate * duration"), na.rm = TRUE),
+            !!"first_rate" := dplyr::first(!!rate),
+            !!"max_rate" := max(!!rate, na.rm = TRUE),
+            !!"auc" := MESS::auc(!!run_time, !!rate),
+            !!"duration" := dplyr::last(!!run_time)
+        ) %>%
+        # join the last and min data, then calculate the time-weighted average
+        # and interval
+        inner_join(
+            nz_rate,
+            by = c(
+                rlang::quo_text(id),
+                purrr::map_chr(group_var, rlang::quo_text),
+                "medication",
+                "drip_n"
+            )
+        ) %>%
+        group_by(!!!grp_by) %>%
+        dplyr::mutate_at("duration", as.numeric) %>%
+        mutate(!!"time_wt_avg" := !!rlang::parse_expr("auc / duration")) %>%
+        ungroup()
+}
+
+# data sets --------------------------------------------
 
 df_demog <- get_data(dir_data, "demographics") %>%
     select(-race)
 
-df_dexmed <- get_data(dir_data, "dexmed_events")
+df_dexmed <- get_data(dir_data, "rates")
 
 df_meds <- get_data(dir_data, "meds")
 
@@ -254,38 +313,21 @@ tmp_vent <- df_vent_events %>%
     ) %>%
     filter(vent_duration > 0)
 
-tmp_dexmed <- df_dexmed %>%
-    filter(!is.na(iv_event)) %>%
-    calc_runtime()
 
 # sedatives --------------------------------------
 
-tmp_dexmed <- meds_dexm %>%
-    semi_join(dc, by = id_col) %>%
+data_dexmed <- df_dexmed %>%
+    filter(!is.na(iv_event)) %>%
     calc_runtime() %>%
-    summarize_data() 
+    summarize_data()
 
-tmp_weight <- weights %>%
-    left_join(
-        tmp_dexmed[c(id_col, "start.datetime")],
-        by = id_col
-    ) %>%
-    arrange(millennium.id, event.datetime) %>%
-    group_by(millennium.id) %>%
-    summarize(
-        weight.first = first(event.result),
-        weight.last = last(event.result)
-    )
+data_dexmed_daily <- df_dexmed %>%
+    filter(!is.na(iv_event)) %>%
+    mutate(med_day = floor_date(clinical_event_datetime, unit = "days")) %>%
+    calc_runtime(med_day) %>%
+    summarize_data(med_day) %>%
+    filter(cum_dose > 0)
 
-data_dexmed <- tmp_dexmed 
-
-data_dexmed_daily <- meds_dexm %>%
-    # semi_join(data_clonidine, by = id_col) %>%
-    arrange(millennium.id, med.datetime) %>%
-    mutate(med.day = floor_date(med.datetime, unit = "days")) %>%
-    calc_runtime(med.day) %>%
-    summarize_data(med.day) %>%
-    filter(cum.dose > 0)
 
 # get order.id for lorazepam, methadone - only want scheduled meds
 
