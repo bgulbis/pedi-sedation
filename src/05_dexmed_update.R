@@ -39,6 +39,15 @@ df_vent_times <- get_data(dir_data, "vent_times")
 
 df_vent_events <- get_data(dir_data, "vent_events") 
 
+tmp_weights <- df_weights %>%
+    filter(
+        event == "Weight",
+        result_unit == "kg"
+    ) %>%
+    arrange(encounter_id, clinical_event_datetime) %>%
+    group_by(encounter_id) %>%
+    summarize_at("result", list(first_weight = first, last_weight = last))
+
 tmp_locations <- df_locations %>%
     group_by(encounter_id) %>%
     mutate(
@@ -64,36 +73,56 @@ tmp_locations <- df_locations %>%
     ) %>%
     filter(nurse_unit == "HC PICU")
 
+tmp_vent_last <- df_vent_times %>%
+    filter(event == "Vent Stop Time") %>%
+    arrange(encounter_id, result_datetime) %>%
+    group_by(encounter_id) %>%
+    summarize_at("result_datetime", max) %>%
+    rename(last_vent_datetime = result_datetime)
 
 tmp_vent <- df_vent_events %>%
     bind_rows(df_vent_times) %>%
+    filter(event %in% c("Vent Start Time", "Extubation Event")) %>%
+    mutate_at(
+        "event",
+        str_replace_all,
+        pattern = c(
+            "Vent Start Time" = "intubation",
+            "Extubation Event" = "extubation"
+        )
+    ) %>%
     arrange(encounter_id, result_datetime) %>%
     group_by(encounter_id) %>%
     mutate(new_event = event != lag(event) | is.na(lag(event))) %>%
-    mutate_at("new_event", cumsum) 
-    
+    mutate_at("new_event", cumsum) %>%
+    distinct(encounter_id, new_event, .keep_all = TRUE) %>%
+    filter(!(new_event == 1 & event == "extubation")) %>%
+    group_by(encounter_id, event) %>%
+    mutate(
+        vent = TRUE,
+        vent_n = cumsum(vent)
+    ) %>%
+    select(encounter_id, vent_n, event, result_datetime) %>%
+    spread(event, result_datetime) %>%
+    select(
+        encounter_id,
+        vent_n,
+        intubate_datetime = intubation,
+        extubate_datetime = extubation
+    ) %>%
+    left_join(tmp_vent_last, by = "encounter_id") %>%
+    mutate_at("extubate_datetime", list(~coalesce(., last_vent_datetime))) %>%
+    select(-last_vent_datetime) %>%
+    group_by(encounter_id, vent_n) %>%
+    mutate(
+        vent_duration = difftime(
+            extubate_datetime,
+            intubate_datetime,
+            units = "hours"
+        )
+    ) %>%
+    filter(vent_duration > 0)
 
-
-
-id <- read_data(dir_raw, "ident", FALSE) %>%
-    as.id() %>%
-    semi_join(dc, by = id_col)
-
-meds <- read_data(dir_raw, "meds-all-inpt", FALSE) %>%
-    as.meds_inpt() %>%
-    semi_join(dc, by = id_col)
-
-data_vent <- read_data(dir_raw, "vent-times", FALSE) %>%
-    as.vent_times() %>%
-    tidy_data(dc) %>%
-    filter(vent.duration > 0) %>%
-    semi_join(dc, by = id_col)
-
-weights <- read_data(dir_raw, "events-measures", FALSE) %>%
-    as.events(order_var = FALSE) %>%
-    filter(event == "weight") %>%
-    mutate_at("event.result", as.numeric) %>%
-    semi_join(dc, by = id_col)
 
 # sedatives --------------------------------------
 
