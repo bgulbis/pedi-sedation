@@ -238,30 +238,7 @@ tmp_weights <- df_weights %>%
     group_by(encounter_id) %>%
     summarize_at("result", list(first_weight = first, last_weight = last))
 
-tmp_locations <- df_locations %>%
-    group_by(encounter_id) %>%
-    mutate(
-        chg_unit = (
-            (nurse_unit != lag(nurse_unit) &
-            end_effective_datetime != lag(begin_effective_datetime)) |
-                (is.na(lag(nurse_unit)))
-        )
-    ) %>%
-    mutate_at("chg_unit", cumsum) %>%
-    group_by(encounter_id, nurse_unit, chg_unit) %>%
-    summarize(
-        arrive_datetime = min(begin_effective_datetime),
-        depart_datetime = max(end_effective_datetime)
-    ) %>%
-    arrange(encounter_id, chg_unit) %>%
-    mutate(
-        unit_los = difftime(
-            depart_datetime,
-            arrive_datetime,
-            units = "days"
-        )
-    ) %>%
-    filter(nurse_unit == "HC PICU")
+
 
 tmp_vent_last <- df_vent_times %>%
     filter(event == "Vent Stop Time") %>%
@@ -270,7 +247,7 @@ tmp_vent_last <- df_vent_times %>%
     summarize_at("result_datetime", max) %>%
     rename(last_vent_datetime = result_datetime)
 
-tmp_vent <- df_vent_events %>%
+data_vent <- df_vent_events %>%
     bind_rows(df_vent_times) %>%
     filter(event %in% c("Vent Start Time", "Extubation Event")) %>%
     mutate_at(
@@ -329,70 +306,63 @@ data_dexmed_daily <- df_dexmed %>%
     filter(cum_dose > 0)
 
 
-# get order.id for lorazepam, methadone - only want scheduled meds
+# lorazepam, methadone ---------------------------------
 
-meds_alt <- meds %>%
-    filter(
-        med %in% c("lorazepam", "methadone"),
-        med.location == picu
-    ) %>%
-    mutate(orig.order.id = order.parent.id) %>%
-    mutate_at("orig.order.id", na_if, y = 0L) %>%
-    mutate_at("orig.order.id", funs(coalesce(., order.id)))
-
-mbo_order <- concat_encounters(meds_alt$orig.order.id)
-
-# run MBO query
-#   * Orders Meds - Details - by Order Id
-
-orders <- read_data(dir_raw, "orders-details", FALSE) %>%
-    as.order_detail(extras = list("order.product" = "Mnemonic (Product)"))
-
-data_meds_other <- meds_alt %>%
-    # semi_join(data_clonidine, by = id_col) %>%
+data_meds_other <- df_meds %>%
     left_join(
-        orders[c(id_col, "order.id", "prn")], 
-        by = c(id_col, "orig.order.id" = "order.id")
+        data_dexmed[c("encounter_id", "start_datetime")],
+        by = "encounter_id"
     ) %>%
-    filter(prn == "Scheduled") %>%
-    left_join(
-        data_dexmed[c(id_col, "start.datetime")],
-        by = id_col
-    ) %>%
-    filter(med.datetime > start.datetime) %>%
-    arrange(millennium.id, med.datetime) %>%
-    distinct(millennium.id, med, .keep_all = TRUE) %>%
+    filter(clinical_event_datetime > start_datetime) %>%
+    arrange(encounter_id, clinical_event_datetime) %>%
+    distinct(encounter_id, medication, .keep_all = TRUE) %>%
     mutate(
-        time.dexmed = difftime(
-            med.datetime,
-            start.datetime,
+        time_from_dexmed = difftime(
+            clinical_event_datetime,
+            start_datetime,
             units = "days"
         )
     ) %>%
     select(
-        millennium.id,
-        med,
-        med.datetime,
-        med.dose,
-        med.dose.units,
-        time.dexmed
+        encounter_id,
+        medication,
+        med_datetime = clinical_event_datetime,
+        dose,
+        dose_unit,
+        time_from_dexmed
     ) 
 
 # data sets --------------------------------------------
 
-data_demographics <- id %>%
-    # semi_join(data_clonidine, by = id_col) %>%
-    left_join(demog, by = id_col) %>%
-    left_join(tmp_weight, by = id_col) %>%
-    select(-race, -(disposition:visit.type))
+data_demographics <- df_demog %>%
+    left_join(tmp_weights, by = "encounter_id") 
 
-data_locations <- read_data(dir_raw, "locations", FALSE) %>%
-    as.locations() %>%
-    tidy_data() %>%
-    filter(location == picu) 
-    # semi_join(data_clonidine, by = id_col)
+data_locations <- df_locations %>%
+    group_by(encounter_id) %>%
+    mutate(
+        chg_unit = (
+            (nurse_unit != lag(nurse_unit) &
+                 end_effective_datetime != lag(begin_effective_datetime)) |
+                (is.na(lag(nurse_unit)))
+        )
+    ) %>%
+    mutate_at("chg_unit", cumsum) %>%
+    group_by(encounter_id, nurse_unit, chg_unit) %>%
+    summarize(
+        arrive_datetime = min(begin_effective_datetime),
+        depart_datetime = max(end_effective_datetime)
+    ) %>%
+    arrange(encounter_id, chg_unit) %>%
+    mutate(
+        unit_los = difftime(
+            depart_datetime,
+            arrive_datetime,
+            units = "days"
+        )
+    ) %>%
+    filter(nurse_unit == "HC PICU")
 
-dirr::save_rds("data/tidy/dexmed-only", "data_")
+# dirr::save_rds("data/tidy/dexmed-only", "data_")
 
 ls(.GlobalEnv, pattern = "data_") %>%
     walk(
