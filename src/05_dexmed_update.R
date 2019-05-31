@@ -6,6 +6,8 @@ library(openxlsx)
 dir_data <- "data/tidy/dexmed-only"
 tz_locale <- locale(tz = "US/Central")
 
+dirr::gzip_files(dir_data)
+
 get_data <- function(path, pattern, col_types = NULL) {
     f <- list.files(path, pattern, full.names = TRUE)
     
@@ -24,7 +26,7 @@ get_data <- function(path, pattern, col_types = NULL) {
 df_demog <- get_data(dir_data, "demographics") %>%
     select(-race)
 
-df_dexmed <- get_data(dir_data, "events")
+df_dexmed <- get_data(dir_data, "dexmed_events")
 
 df_meds <- get_data(dir_data, "meds")
 
@@ -32,69 +34,19 @@ df_weights <- get_data(dir_data, "weights")
 
 df_locations <- get_data(dir_data, "locations")
 
-df_vent <- get_data(dir_data, "vent")
+df_vent_times <- get_data(dir_data, "vent_times") 
 
-# run MBO query
-#   * Patients - by Medication (Generic) - Location
-#       - Facility (Curr): HC Childrens
-#       - Nurse Unit (Med): HC PICU
-#       - Medication (Generic): dexmedetomidine;clonidine
-#       - Admit Date: 7/1/2016 - 4/30/2018
+df_vent_events <- get_data(dir_data, "vent_events") 
 
-raw_pts <- read_data(dir_raw, "patients", FALSE) %>%
-    as.patients()
+tmp_vent <- df_vent_events %>%
+    bind_rows(df_vent_times) %>%
+    arrange(encounter_id, result_datetime) %>%
+    group_by(encounter_id) %>%
+    mutate(new_event = event != lag(event) | is.na(lag(event))) %>%
+    mutate_at("new_event", cumsum) 
+    
 
-mbo_pts <- concat_encounters(raw_pts$millennium.id, 500)
 
-# run MBO queries
-#   * Medications - Inpatient - Prompt
-#       - Medication (Generic): dexmedetomidine;clonidine
-
-raw_meds <- read_data(dir_raw, "meds-inpt", FALSE) %>%
-    as.meds_inpt()
-
-meds_dexm <- raw_meds %>%
-    filter(
-        med == "dexmedetomidine",
-        !is.null(event.tag),
-        med.location == picu
-    ) 
-
-meds_clon <- raw_meds %>%
-    filter(
-        med == "clonidine",
-        med.location == picu
-    ) 
-
-pts_include <- meds_dexm %>%
-    anti_join(meds_clon, by = id_col) %>%
-    distinct(millennium.id)
-
-mbo_id <- concat_encounters(pts_include$millennium.id) 
-mbo_id
-
-dc <- raw_pts %>%
-    semi_join(pts_include, by = id_col) %>%
-    filter(!is.na(discharge.datetime)) %>%
-    select(millennium.id, discharge.datetime) 
-
-# run MBO queries
-#   * Clinical Events - Measures
-#   * Demographics - Pedi
-#   * Identifiers - by Millennium Encounter id
-#   * Location History
-#   * Medications - Inpatient - All
-#   * Vent Times
-
-dir_raw <- "data/raw/dexmed-only"
-
-dirr::gzip_files(dir_raw)
-
-demog <- read_data(dir_raw, "demog", FALSE) %>%
-    as.demographics(
-        extras = list("age.days" = "Age- Days (At Admit)")
-    ) %>%
-    semi_join(dc, by = id_col)
 
 id <- read_data(dir_raw, "ident", FALSE) %>%
     as.id() %>%
