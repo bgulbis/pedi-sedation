@@ -23,6 +23,137 @@ get_data <- function(path, pattern, col_types = NULL) {
         rename_all(stringr::str_to_lower)
 }
 
+calc_runtime <- function(x, ..., drip_off = 12, undocumented = 24, units = "hours") {
+    group_var <- quos(...)
+    
+    id <- sym("encounter_id")
+    med <- sym("medication")
+    event_datetime <- sym("clinical_event_datetime")
+    rate <- sym("rate")
+    rate_unit <- sym("rate_unit")
+    chg_n <- sym("chg_n")
+    rate_chg <- sym("rate_chg")
+    rate_calc <- sym("rate_calc")
+    rate_duration <- sym("rate_duration")
+    rate_start <- sym("rate_start")
+    rate_stop <- sym("rate_stop")
+    time_next <- sym("time_next")
+    drip_start <- sym("drip_start")
+    drip_stop <- sym("drip_stop")
+    drip_n <- sym("drip_n")
+    duration <- sym("duration")
+    
+    cont <- x %>%
+        arrange(!!id, !!!group_var, !!med, !!event_datetime) %>%
+        
+        # determine if it's a valid rate documentation
+        group_by(!!id, !!!group_var, !!med) %>%
+        mutate(
+            !!"rate_chg" := !is.na(!!rate_unit),
+            !!"chg_n" := cumsum(!!rate_chg)
+        ) %>%
+
+        # mutate(rate = if_else(is.na(rate_unit), NA_real_, rate)) %>%
+        # fill(rate, rate_unit) %>%
+        # filter(!is.na(rate)) %>%
+                
+        # fill in missing rates
+        group_by(!!id, !!!group_var, !!med, !!chg_n) %>%
+        mutate(
+            !!"rate_calc" := dplyr::if_else(
+                is.na(!!rate_unit),
+                dplyr::first(!!rate),
+                !!rate
+            )
+        ) %>%
+        
+        # calculate time between rows and order of rate changes
+        group_by(!!id, !!!group_var, !!med) %>%
+        mutate(
+            !!"time_next" := difftime(
+                dplyr::lead(!!event_datetime),
+                !!event_datetime,
+                units = units
+            ),
+            !!"rate_chg" := is.na(dplyr::lag(!!rate_calc)) |
+                rate != dplyr::lag(!!rate_calc),
+            !!"chg_n" := cumsum(!!rate_chg)
+        ) %>%
+        
+        # calculate how long the drip was at each rate
+        group_by(!!id, !!!group_var, !!med, !!chg_n) %>%
+        summarize(
+            !!"rate" := dplyr::first(!!rate_calc),
+            !!"rate_start" := dplyr::first(!!event_datetime),
+            !!"rate_stop" := dplyr::last(!!event_datetime),
+            !!"rate_duration" := difftime(
+                dplyr::last(!!event_datetime),
+                dplyr::first(!!event_datetime),
+                units = units
+            ),
+            !!"time_next" := dplyr::last(!!time_next)
+        ) %>%
+        
+        # identify individual drips
+        group_by(!!id, !!!group_var, !!med) %>%
+        mutate(
+            !!"duration" := dplyr::if_else(
+                !!time_next < drip_off & !is.na(!!time_next),
+                !!rate_duration + !!time_next,
+                !!rate_duration
+            ),
+            !!"drip_stop" := is.na(!!time_next) | !!time_next > undocumented |
+                (!!rate == 0 & !!duration > drip_off),
+            !!"drip_start" := !!chg_n == 1 | dplyr::lag(!!drip_stop),
+            !!"drip_n" := cumsum(!!drip_start)
+        ) %>%
+        dplyr::mutate_at("duration", as.numeric) %>%
+        
+        # calculate run time
+        group_by(!!id, !!!group_var, !!med, !!drip_n) %>%
+        mutate(
+            !!"run.time" := difftime(
+                !!rate_start,
+                dplyr::first(!!rate_start),
+                units = units
+            )
+        ) %>%
+        
+        # remove unnecessary columns
+        select(
+            -!!rate_duration,
+            -!!time_next,
+            -!!drip_start,
+            -!!drip_stop,
+            -!!chg_n
+        )
+    
+    # update drip stop information if rate of last row isn't 0
+    drip.end <- cont %>%
+        filter(
+            !!rate_stop == dplyr::last(!!rate_stop),
+            !!rate > 0
+        ) %>%
+        
+        # calculate the run time for the last drip row
+        mutate(
+            !!"run.time" := !!duration + !!sym("run.time"),
+            !!"rate_start" := !!rate_stop,
+            !!"duration" := 0
+        ) %>%
+        ungroup()
+    
+    # bind the rows with drip end data and arrange by date/time; need to ungroup
+    # first for bind_rows to keep edwr class assigment
+    df <- cont %>%
+        ungroup() %>%
+        dplyr::bind_rows(drip.end) %>%
+        arrange(!!id, !!!group_var, !!med, !!drip_n, !!rate_start) %>%
+        distinct()
+    
+    # reclass(x, df)
+}
+
 df_demog <- get_data(dir_data, "demographics") %>%
     select(-race)
 
@@ -123,6 +254,9 @@ tmp_vent <- df_vent_events %>%
     ) %>%
     filter(vent_duration > 0)
 
+tmp_dexmed <- df_dexmed %>%
+    filter(!is.na(iv_event)) %>%
+    calc_runtime()
 
 # sedatives --------------------------------------
 
