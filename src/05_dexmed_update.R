@@ -32,11 +32,38 @@ df_meds <- get_data(dir_data, "meds")
 
 df_weights <- get_data(dir_data, "weights")
 
-df_locations <- get_data(dir_data, "locations")
+df_locations <- get_data(dir_data, "locations") %>%
+    arrange(encounter_id, begin_effective_datetime)
 
 df_vent_times <- get_data(dir_data, "vent_times") 
 
 df_vent_events <- get_data(dir_data, "vent_events") 
+
+tmp_locations <- df_locations %>%
+    group_by(encounter_id) %>%
+    mutate(
+        chg_unit = (
+            (nurse_unit != lag(nurse_unit) &
+            end_effective_datetime != lag(begin_effective_datetime)) |
+                (is.na(lag(nurse_unit)))
+        )
+    ) %>%
+    mutate_at("chg_unit", cumsum) %>%
+    group_by(encounter_id, nurse_unit, chg_unit) %>%
+    summarize(
+        arrive_datetime = min(begin_effective_datetime),
+        depart_datetime = max(end_effective_datetime)
+    ) %>%
+    arrange(encounter_id, chg_unit) %>%
+    mutate(
+        unit_los = difftime(
+            depart_datetime,
+            arrive_datetime,
+            units = "days"
+        )
+    ) %>%
+    filter(nurse_unit == "HC PICU")
+
 
 tmp_vent <- df_vent_events %>%
     bind_rows(df_vent_times) %>%
