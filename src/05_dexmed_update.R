@@ -3,7 +3,7 @@ library(lubridate)
 # library(edwr)
 library(openxlsx)
 
-dir_data <- "data/tidy/dexmed-only"
+dir_data <- "U:/pedi_sedation/data/tidy/dexmed-only"
 tz_locale <- locale(tz = "US/Central")
 
 dirr::gzip_files(dir_data)
@@ -368,7 +368,7 @@ ls(.GlobalEnv, pattern = "data_") %>%
     walk(
         ~write.xlsx(
             get(.x), 
-            paste0("data/external/dexmed-only/", .x, ".xlsx")
+            paste0("U:/pedi_sedation/final/tidy/dexmed-only/", .x, ".xlsx")
         )
     )
 
