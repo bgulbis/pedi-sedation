@@ -10,14 +10,14 @@ WITH DEXM_PTS AS (
 		AND CLINICAL_EVENT.EVENT_END_DT_TM BETWEEN
 			pi_to_gmt(
 				TO_DATE(
-					@Prompt('Enter begin date', 'D', , mono, free, persistent, {'01/01/1800 00:00:00'}, User:0), 
+					@Prompt('Enter begin date', 'D', , mono, free, persistent, {'06/01/2018 00:00:00'}, User:0), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				), 
 				'CST'
 			)
 			AND pi_to_gmt(
 				TO_DATE(
-					@Prompt('Enter end date', 'D', , mono, free, persistent, {'01/01/1800 00:00:00'}, User:1), 
+					@Prompt('Enter end date', 'D', , mono, free, persistent, {'07/01/2019 00:00:00'}, User:1), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				) - 1/86400, 
 				'CST'
@@ -45,14 +45,14 @@ WITH DEXM_PTS AS (
 		AND CLINICAL_EVENT.EVENT_END_DT_TM BETWEEN
 			pi_to_gmt(
 				TO_DATE(
-					@Prompt('Enter begin date', 'D', , mono, free, persistent, {'01/01/1800 00:00:00'}, User:0), 
+					@Prompt('Enter begin date', 'D', , mono, free, persistent, {'06/01/2018 00:00:00'}, User:0), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				), 
 				'CST'
 			)
 			AND pi_to_gmt(
 				TO_DATE(
-					@Prompt('Enter end date', 'D', , mono, free, persistent, {'01/01/1800 00:00:00'}, User:1), 
+					@Prompt('Enter end date', 'D', , mono, free, persistent, {'07/01/2019 00:00:00'}, User:1), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				) - 1/86400, 
 				'CST'
