@@ -47,14 +47,14 @@ FROM
 						@Prompt('Enter begin date', 'D', , mono, free, persistent, {'01/01/1800 00:00:00'}, User:0), 
 						pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 					), 
-					'CST'
+					'America/Chicago'
 				)
 				AND pi_to_gmt(
 					TO_DATE(
 						@Prompt('Enter end date', 'D', , mono, free, persistent, {'01/01/1800 00:00:00'}, User:1), 
 						pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 					) - 1/86400, 
-					'CST'
+					'America/Chicago'
 				)
         
         MINUS
@@ -95,14 +95,14 @@ FROM
 						@Prompt('Enter begin date', 'D', , mono, free, persistent, {'01/01/1800 00:00:00'}, User:0), 
 						pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 					), 
-					'CST'
+					'America/Chicago'
 				)
 				AND pi_to_gmt(
 					TO_DATE(
 						@Prompt('Enter end date', 'D', , mono, free, persistent, {'01/01/1800 00:00:00'}, User:1), 
 						pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 					) - 1/86400, 
-					'CST'
+					'America/Chicago'
 				)
 	) ENCNTRS_DEXMED
 WHERE

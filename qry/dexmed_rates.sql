@@ -13,14 +13,14 @@ WITH DEXM_PTS AS (
 					@Prompt('Enter begin date', 'D', , mono, free, persistent, {'06/01/2018 00:00:00'}, User:0), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				), 
-				'CST'
+				'America/Chicago'
 			)
 			AND pi_to_gmt(
 				TO_DATE(
 					@Prompt('Enter end date', 'D', , mono, free, persistent, {'07/01/2019 00:00:00'}, User:1), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				) - 1/86400, 
-				'CST'
+				'America/Chicago'
 			)
 		AND CLINICAL_EVENT.ENCNTR_ID = ENCNTR_LOC_HIST.ENCNTR_ID
 		AND ENCNTR_LOC_HIST.BEG_EFFECTIVE_DT_TM <= CLINICAL_EVENT.EVENT_END_DT_TM
@@ -48,14 +48,14 @@ WITH DEXM_PTS AS (
 					@Prompt('Enter begin date', 'D', , mono, free, persistent, {'06/01/2018 00:00:00'}, User:0), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				), 
-				'CST'
+				'America/Chicago'
 			)
 			AND pi_to_gmt(
 				TO_DATE(
 					@Prompt('Enter end date', 'D', , mono, free, persistent, {'07/01/2019 00:00:00'}, User:1), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				) - 1/86400, 
-				'CST'
+				'America/Chicago'
 			)
 		AND CLINICAL_EVENT.ENCNTR_ID = ENCNTR_LOC_HIST.ENCNTR_ID
 		AND ENCNTR_LOC_HIST.BEG_EFFECTIVE_DT_TM <= CLINICAL_EVENT.EVENT_END_DT_TM

@@ -13,14 +13,14 @@ WITH DEXM_PTS AS (
 					@Prompt('Enter begin date', 'D', , mono, free, persistent, {'06/01/2018 00:00:00'}, User:0), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				), 
-				'CST'
+				'America/Chicago'
 			)
 			AND pi_to_gmt(
 				TO_DATE(
 					@Prompt('Enter end date', 'D', , mono, free, persistent, {'07/01/2019 00:00:00'}, User:1), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				) - 1/86400, 
-				'CST'
+				'America/Chicago'
 			)
 		AND CLINICAL_EVENT.ENCNTR_ID = ENCNTR_LOC_HIST.ENCNTR_ID
 		AND ENCNTR_LOC_HIST.BEG_EFFECTIVE_DT_TM <= CLINICAL_EVENT.EVENT_END_DT_TM
@@ -48,14 +48,14 @@ WITH DEXM_PTS AS (
 					@Prompt('Enter begin date', 'D', , mono, free, persistent, {'06/01/2018 00:00:00'}, User:0), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				), 
-				'CST'
+				'America/Chicago'
 			)
 			AND pi_to_gmt(
 				TO_DATE(
 					@Prompt('Enter end date', 'D', , mono, free, persistent, {'07/01/2019 00:00:00'}, User:1), 
 					pi_get_dm_info_char_gen('Date Format Mask|FT','PI EXP|Systems Configuration|Date Format Mask')
 				) - 1/86400, 
-				'CST'
+				'America/Chicago'
 			)
 		AND CLINICAL_EVENT.ENCNTR_ID = ENCNTR_LOC_HIST.ENCNTR_ID
 		AND ENCNTR_LOC_HIST.BEG_EFFECTIVE_DT_TM <= CLINICAL_EVENT.EVENT_END_DT_TM
@@ -98,8 +98,8 @@ SELECT DISTINCT
 	ENCOUNTER.ENCNTR_ID AS ENCOUNTER_ID,
 	ENCNTR_ALIAS.ALIAS AS FIN,
     ENCOUNTER.DISCH_DT_TM - ENCOUNTER.REG_DT_TM AS LOS,
-    TRUNC(pi_from_gmt(ENCOUNTER.REG_DT_TM, 'CST') - PERSON.BIRTH_DT_TM, 0) AS AGE_DAYS,
-    TRUNC((pi_from_gmt(ENCOUNTER.REG_DT_TM, 'CST') - PERSON.BIRTH_DT_TM) / 365.25, 0) AS AGE_YEARS,
+    TRUNC(pi_from_gmt(ENCOUNTER.REG_DT_TM, 'America/Chicago') - PERSON.BIRTH_DT_TM, 0) AS AGE_DAYS,
+    TRUNC((pi_from_gmt(ENCOUNTER.REG_DT_TM, 'America/Chicago') - PERSON.BIRTH_DT_TM) / 365.25, 0) AS AGE_YEARS,
     pi_get_cv_display(PERSON.SEX_CD) AS SEX,
 	WEIGHTS.FIRST_WEIGHT,
 	WEIGHTS.LAST_WEIGHT
